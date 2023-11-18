@@ -1,0 +1,17 @@
+__pycache__
+.venv
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.log
+*.log.*
+*.sqlite
+*.sqlite3
+*.pkl
+*.egg-info
+*.egg
+*.pip
+*.cache
+*.git
+*.vscode

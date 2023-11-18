@@ -1,0 +1,8 @@
+FROM python:3.9 as base
+RUN pip3 install poetry
+FROM base as package
+WORKDIR /app
+COPY . /app
+RUN poetry install
+EXPOSE 8000
+CMD ["poetry", "run", "gunicorn", "main:app"]
