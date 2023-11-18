@@ -1,5 +1,129 @@
 import { InitSwapWidget } from "@dodoex/widgets";
 import type { SwapWidgetProps } from "@dodoex/widgets";
+import BigNumber from "bignumber.js";
+
+const baseUrl = "https://api.geckoterminal.com/api/v2/";
+function getGeckoterminalTokenInfo(chainId: string | number, address: string) {
+  const platforms: any = {
+    "1": "eth",
+    "56": "bsc",
+    "128": "heco",
+    "137": "polygon_pos",
+    "66": "okexchain",
+    "42161": "arbitrum",
+    "1285": "movr",
+    "1313161554": "aurora",
+    "288": "boba",
+    "43114": "avax",
+    "10": "optimism",
+    "25": "cro",
+    "321": "kcc",
+    "1030": "cfx",
+    "8453": "base",
+    "59144": "linea",
+    // 534353: 'scr-alpha',
+    // 534351: 'scr-sepolia',
+    "534352": "scroll",
+    "169": "manta-pacific",
+  };
+  if (!platforms[chainId.toString()]) {
+    console.warn(
+      "getOhlcvDataByGeckoterminal platforms NotFound",
+      chainId,
+      address
+    );
+    return;
+  }
+  const wrappedTokens: any = {
+    "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee": {
+      "8453": "0x4200000000000000000000000000000000000006",
+      "59144": "0xe5d7c2a44ffddf6b295a15c148167daaaf5cf34f",
+      // '137': '0x0000000000000000000000000000000000001010', 不需要转换
+      "66": "0x8f8526dbfd6e38e3d8307702ca8469bae6c56c15",
+      "169": "0x0dc808adce2099a9f62aa87d9670745aba741746",
+    },
+  };
+
+  let tokenInfo;
+  address = address.toLowerCase();
+  if (wrappedTokens[address] && wrappedTokens[address][chainId.toString()]) {
+    tokenInfo = `${platforms[chainId]}:${wrappedTokens[address][
+      chainId.toString()
+    ].toLowerCase()}`;
+  } else {
+    tokenInfo = `${platforms[chainId]}:${address}`;
+  }
+  return tokenInfo;
+}
+
+async function getOhlcvData(
+  chainId: string | number,
+  address: string,
+  token = "base",
+  timeframe = "minute",
+  limit = 100
+) {
+  const tokenInfo = getGeckoterminalTokenInfo(chainId, address);
+  if (!tokenInfo) return;
+  const network = tokenInfo.split(":")[0];
+  address = tokenInfo.split(":")[1];
+  const tokenPoolsCacheKey = `geckoterminal:tokenPools:${tokenInfo}`;
+  let tokenPools: any = cacheMap[tokenPoolsCacheKey];
+  if (!(tokenPools && tokenPools.length > 0)) {
+    try {
+      const response = await fetch(
+        baseUrl + `networks/${network}/tokens/${address}/pools`
+      );
+      const body = await response.json();
+      tokenPools = body["data"];
+      cacheMap[tokenPoolsCacheKey] = tokenPools;
+    } catch (error) {
+      console.warn(
+        "getOhlcvDataByGeckoterminal get tokenPools error",
+        chainId,
+        address,
+        error
+      );
+    }
+  }
+
+  if (!(tokenPools && tokenPools[0])) {
+    console.warn(
+      "getOhlcvDataByGeckoterminal tokenPools NotFound",
+      chainId,
+      address,
+      tokenPools
+    );
+    return;
+  }
+  //过滤掉三池
+  const tokenPool = tokenPools.find((pool: any) => {
+    return pool?.attributes?.name?.split("/").length === 2;
+  });
+  if (!tokenPool) return;
+  const poolAddress = tokenPool["attributes"]["address"];
+  if (!poolAddress) return;
+  let poolQuoteToken = tokenPool["relationships"]["quote_token"]["data"]["id"];
+  poolQuoteToken = poolQuoteToken.split("_")[1];
+  if (address === poolQuoteToken) {
+    token = "quote";
+  }
+  let body;
+  if (!body) {
+    const response = await fetch(
+      baseUrl +
+        `networks/${network}/pools/${poolAddress}/ohlcv/${timeframe}?limit=${limit}&token=${token}`
+    );
+    body = await response.json();
+  }
+
+  const ohlcv = body?.data?.attributes?.ohlcv_list;
+  if (!ohlcv?.map) console.warn("getOhlcvDataByGeckoterminal body", body);
+  if (ohlcv?.length && ohlcv?.map) {
+    console.debug("getOhlcvDataByGeckoterminal ohlcv.length", ohlcv.length);
+    return ohlcv;
+  }
+}
 
 const getAutoSlippage: SwapWidgetProps["getAutoSlippage"] = ({
   fromToken,
