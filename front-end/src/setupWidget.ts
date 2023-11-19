@@ -56,6 +56,7 @@ function getGeckoterminalTokenInfo(chainId: string | number, address: string) {
   return tokenInfo;
 }
 
+const cacheMap: any = {};
 async function getOhlcvData(
   chainId: string | number,
   address: string,
@@ -125,18 +126,91 @@ async function getOhlcvData(
   }
 }
 
+async function post(url: string, data: any) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  const body = await response.json();
+  return body;
+}
+
+async function forecastslippage(chainId: number, address: string) {
+  let forecastSlippage = 0.11;
+  try {
+    let tokenOhlcvData = await getOhlcvData(chainId, address);
+    tokenOhlcvData = tokenOhlcvData.map((item: any) => item[4]);
+    const url = "http://127.0.0.1:8000" + "/forecast/slippage";
+    const resData = (
+      await post(url, {
+        kind: "long-tail",
+        data: tokenOhlcvData,
+      })
+    ).data;
+    const lastPrice = tokenOhlcvData[tokenOhlcvData.length - 1];
+
+    const lower =
+      parseFloat(
+        new BigNumber(lastPrice)
+          .minus(resData.confidence_intervals[0])
+          .abs()
+          .div(lastPrice)
+          .toFixed(6)
+      ) * 100;
+    const upper =
+      parseFloat(
+        new BigNumber(lastPrice)
+          .minus(resData.confidence_intervals[1])
+          .abs()
+          .div(lastPrice)
+          .toFixed(6)
+      ) * 100;
+    forecastSlippage = Math.max(lower, upper);
+  } catch (error) {
+    console.warn("forecastslippage error", chainId, address, error);
+  }
+  return forecastSlippage || 0.11;
+}
+
 const getAutoSlippage: SwapWidgetProps["getAutoSlippage"] = ({
   fromToken,
   toToken,
 }) => {
+  console.log(fromToken, toToken);
   if (!fromToken || !toToken || fromToken.chainId !== toToken.chainId)
     return undefined;
 
   /** TODO: Edit this. */
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(0.3);
-    }, 500);
+  return new Promise(async (resolve) => {
+    try {
+      const fromTokenForecastslippage = await forecastslippage(
+        fromToken.chainId,
+        fromToken.address
+      );
+      console.log(
+        "fromTokenForecastslippage",
+        fromToken.chainId,
+        fromToken.symbol,
+        fromTokenForecastslippage
+      );
+      const toTokenForecastslippage = await forecastslippage(
+        toToken.chainId,
+        toToken.address
+      );
+      console.log(
+        "toTokenForecastslippage",
+        toToken.chainId,
+        toToken.symbol,
+        toTokenForecastslippage
+      );
+
+      resolve(Math.max(fromTokenForecastslippage, toTokenForecastslippage));
+    } catch (error) {
+      resolve(0.31);
+    }
   });
 };
 
