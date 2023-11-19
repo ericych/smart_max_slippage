@@ -141,12 +141,21 @@ async function post(url: string, data: any) {
 async function forecastslippage(chainId: number, address: string) {
   let forecastSlippage = 0.11;
   try {
+    let tokenKind = "mainstream"
+    if (address === "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" || 
+        address === "0xdac17f958d2ee523a2206206994597c13d831ec7" ||
+        address === "0x6b175474e89094c44da98b954eedeac495271d0f") {
+          tokenKind = "stable"
+        }
+    else if (address === "0x43dfc4159d86f3a37a5a4b3d4580b888ad7d4ddd") {
+      tokenKind = "long-tail"
+    }
     let tokenOhlcvData = await getOhlcvData(chainId, address);
     tokenOhlcvData = tokenOhlcvData.map((item: any) => item[4]);
     const url = "http://127.0.0.1:8000" + "/forecast/slippage";
     const resData = (
       await post(url, {
-        kind: "long-tail",
+        kind: tokenKind,
         data: tokenOhlcvData,
       })
     ).data;
